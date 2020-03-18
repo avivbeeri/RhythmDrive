@@ -173,7 +173,7 @@ class Game {
         __flash = M.max(0, __flash - 1)
       }
       var soon = ((__conductor.beatPosition.floor - 1)...(__conductor.beatPosition.floor + 5)).map {|n| BEATS[n] }
-      // if (SPACE_KEY.firing) {
+      if (SPACE_KEY.firing) {
         var hit = false
         for (beat in soon) {
           if (beat != null) {
@@ -198,13 +198,11 @@ class Game {
             }
           }
         }
-        /*
         if (!hit) {
           __misses = __misses + 1
           __charge = M.max(0, __charge - 5)
         }
       }
-        */
       for (beat in soon) {
         if (beat != null) {
           var margin = (beat.position - __conductor.beatPosition)
@@ -281,7 +279,14 @@ class Game {
 
       var x = M.lerp(__oldX, __tweenX, __x)
 
-      Canvas.rectfill(centerX + x * (width + spacing) - (width / 2), playerY, width, height, __flash > 0 ? Color.white : Color.red)
+      var pX = centerX + x * (width + spacing) - (width / 2)
+      if (__flash > 0) {
+        Canvas.ellipsefill(pX, playerY, pX + width, playerY + height, __flash > 0 ? Color.white : Color.red)
+      } else {
+        var bg = Color.rgb(Color.red.r, Color.red.g, Color.red.b, 128)
+        Canvas.ellipsefill(pX, playerY, pX + width, playerY + height, bg)
+        Canvas.ellipse(pX, playerY, pX + width, playerY + height, __flash > 0 ? Color.white : Color.red)
+      }
 
       var secs = __conductor.length - __conductor.position
       var mins = (secs / 60).floor
