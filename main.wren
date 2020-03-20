@@ -23,6 +23,7 @@ var PLAY_KEY = Key.new("-", false, true)
 var BEAT_KEY = Key.new("=", false, -1)
 var PLAY_LEVEL_KEY = Key.new("p", false, -1)
 
+var CLEAR_KEY = Key.new("[", false, true)
 var EDITOR_KEYS = [
   Key.new("tab", false, -1),
   Key.new("1", false, 0),
@@ -36,6 +37,7 @@ class LevelEditor {
     _mode = true
     _beat = 0
     _conductor = Conductor.new()
+    load()
   }
 
 
@@ -45,9 +47,11 @@ class LevelEditor {
   }
 
   update() {
+    if (CLEAR_KEY.update()) {
+      _level = {}
+    }
     if (BEAT_KEY.update()) {
       _conductor.playBeat(_conductor.beatPosition + 1)
-      return
     }
     if (PLAY_KEY.update()) {
       _conductor.play()
@@ -56,6 +60,13 @@ class LevelEditor {
       _conductor.stop()
     }
     if (ZERO_KEY.update()) {
+      for (row in _level) {
+        for (beat in row) {
+          if (beat != null) {
+            beat.reset()
+          }
+        }
+      }
       _conductor.beatPosition = 0
       _conductor.stop()
     }
@@ -83,6 +94,36 @@ class LevelEditor {
 
   draw() {
     Canvas.print(_beat, Canvas.width - (8 * _beat.toString.count), 0, Color.white)
+  }
+
+  load() {
+    var lines = FileSystem.load("level.dat").split("\n")
+    var tokens = lines[0].split(" ")
+    if (tokens[0] == "FILE") {
+      _file = tokens[1]
+    }
+    tokens = lines[1].split(" ")
+    if (tokens[0] == "BPM") {
+      _bpm = Num.fromString(tokens[1])
+    }
+    for (lineIndex in 2...lines.count) {
+      var line = lines[lineIndex]
+      tokens = line.split("=")
+      var beatNo = Num.fromString(tokens[0])
+      if (!_level[beatNo]) {
+        _level[beatNo] = [null, null, null]
+      }
+      for (i in 0...3) {
+        var type = tokens[1][i]
+        if (type == "S") {
+          _level[beatNo][i] = Beat.new(beatNo, i, true)
+        } else if (type == "D") {
+          _level[beatNo][i] = Beat.new(beatNo, i, false)
+        }
+      }
+
+    }
+
   }
 
   save() {
@@ -120,6 +161,11 @@ class Beat {
     _safe = true
     _position = position
     _action = action
+    _hit = false
+    _miss = false
+  }
+
+  reset() {
     _hit = false
     _miss = false
   }
@@ -323,6 +369,9 @@ class Game {
     static update() {
       __beat = __conductor.beatPosition.floor
       __editor.update()
+      __level = __editor.level
+      __conductor = __editor.conductor
+      __conductor.update()
 
       if (__shake > 0) {
         __shake = __shake - 1
@@ -343,7 +392,6 @@ class Game {
       LEFT_KEY.update()
       RIGHT_KEY.update()
       SPACE_KEY.update()
-      __conductor.update()
 
       if (LEFT_KEY.firing) {
         __oldX = __x
