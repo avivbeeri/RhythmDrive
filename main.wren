@@ -11,12 +11,23 @@ var BIT_RATE = 44100
 var R = Random.new()
 var D_PI = Num.pi / 180
 
+var BEAT_KEY = Key.new("=", false, -1)
+var PLAY_KEY = Key.new("-", false, -1)
 var LEFT_KEY = Key.new("left", false, -1)
 var RIGHT_KEY = Key.new("right", false, 1)
 var SPACE_KEY = Key.new("space", false, true)
 
 class Beat {
   construct new(position, action) {
+    _safe = true
+    _position = position
+    _action = action
+    _hit = false
+    _miss = false
+  }
+
+  construct new(position, action, safe) {
+    _safe = safe
     _position = position
     _action = action
     _hit = false
@@ -30,6 +41,7 @@ class Beat {
     _miss = true
   }
 
+  safe { _safe }
   hit { _hit }
   miss { _miss }
   action { _action }
@@ -39,10 +51,11 @@ class Beat {
 
 var BEATS = {}
 var side = 1
-for (n in 4...100) {
+for (n in 3...100) {
   var q = n * 4
   side = R.int(3)
-  BEATS[q] = Beat.new(q, side)
+  BEATS[q] = [Beat.new(q, 0, false), Beat.new(q, 1, false), Beat.new(q, 2, false)]
+  BEATS[q][side] = Beat.new(q, side)
 }
 /*
 var BEAT_MAP = {
@@ -57,6 +70,14 @@ class Song {
 }
 
 class Conductor {
+  construct new() {
+    _bpm = 160
+    _crotchet = 60 / _bpm //sec per beat
+    _position = 0
+    _beatPosition = 0
+    _audio = null
+    _length = 0
+  }
   construct new(audio) {
     _bpm = 160
     _crotchet = 60 / _bpm //sec per beat
@@ -66,10 +87,31 @@ class Conductor {
     _length = audio.length / BIT_RATE
   }
 
+  playBeat(n) {
+    n = n.floor - 0.25
+    if (_audio) {
+      _audio.stop()
+      _audio = null
+    }
+    var channel = AudioEngine.play("music")
+    channel.position = BIT_RATE * _crotchet * n
+    _audio = channel
+    _beatPosition = n
+    _position = n * _crotchet
+    _length = (n + 4) * _crotchet
+  }
+
 
   update() {
-    _position = M.mid(0, (_audio.position / BIT_RATE), _length) // position in seconds
-    _beatPosition = _position / _crotchet
+    if (_audio) {
+      _position = M.mid(0, (_audio.position / BIT_RATE), _length) // position in seconds
+      _beatPosition = _position / _crotchet
+      if (_position >= _length) {
+        _position = _length
+        _audio.stop()
+        _audio = null
+      }
+    }
   }
 
   position { _position }
@@ -122,11 +164,14 @@ class SpaceLine is Decoration {
 
 class Game {
     static init() {
+      __shake = 0
+      __shadePos = 0
       __flash = 0
       __charge = 0
       __score = 0
       __misses = 0
       Canvas.resize(320, 180)
+      Canvas.offset(5, 5)
       var scale = 3
       Window.resize(scale * Canvas.width, scale * Canvas.height)
       __oldX = 0
@@ -135,8 +180,10 @@ class Game {
       // AudioEngine.load("music", "extremeaction.ogg")
       // AudioEngine.load("music", "click.ogg")
       AudioEngine.load("music", "race-to-mars.ogg")
-      var channel = AudioEngine.play("music")
-      __conductor = Conductor.new(channel)
+      // var channel = AudioEngine.play("music")
+      // channel.position = BIT_RATE * 60
+      // __conductor = Conductor.new(channel)
+      __conductor = Conductor.new()
 
       var centerX = Canvas.width / 2
       var centerY = Canvas.height / 4
@@ -147,10 +194,25 @@ class Game {
       }.toList
     }
     static update() {
+      if (__shake > 0) {
+        __shake = __shake - 1
+        var magnitude = 6
+        __shakePos = Vec.new(R.int(magnitude) - magnitude/2, R.int(magnitude) - magnitude / 2)
+      } else {
+        __shakePos = Vec.new()
+      }
       __decorations.each {|decor| decor.update() }
       __tweenX = M.mid(0, __tweenX + 0.34, 1)
       if (Keyboard.isKeyDown("escape")) {
         Process.exit()
+      }
+      if (BEAT_KEY.update()) {
+        __conductor.playBeat(__conductor.beatPosition + 1)
+        return
+      }
+      if (PLAY_KEY.update()) {
+        var channel = AudioEngine.play("music")
+        __conductor = Conductor.new(channel)
       }
       LEFT_KEY.update()
       RIGHT_KEY.update()
@@ -172,17 +234,18 @@ class Game {
       if (__flash) {
         __flash = M.max(0, __flash - 1)
       }
-      var soon = ((__conductor.beatPosition.floor - 1)...(__conductor.beatPosition.floor + 5)).map {|n| BEATS[n] }
-      if (SPACE_KEY.firing) {
-        var hit = false
-        for (beat in soon) {
-          if (beat != null) {
-            var margin = (beat.position - __conductor.beatPosition)
-            var absMargin = margin.abs
-            if (!beat.hit && absMargin < 0.5 && beat.action == notePosition) {
-              beat.hit()
-              hit = true
+      var soon = []
+      ((__conductor.beatPosition.floor - 1)...(__conductor.beatPosition.floor + 5)).map {|n| BEATS[n] }.where{|a| a != null }.each {|beats| soon = soon + beats }
+      var hit = false
+      for (beat in soon) {
+        if (beat != null) {
+          var margin = (beat.position - __conductor.beatPosition)
+          var absMargin = margin.abs
+          if (!beat.hit && absMargin < 0.5 && beat.action == notePosition) {
+            if (SPACE_KEY.firing && beat.safe) {
               System.print(margin)
+              hit = true
+              beat.hit()
               if (absMargin < 0.1) {
                 __score = __score + 5
                 __charge = __charge + 3
@@ -195,26 +258,34 @@ class Game {
                 __score = __score + 1
                 __flash = 3
               }
+            } else if (!beat.safe && absMargin < 0.1) {
+              beat.hit()
+              __shake = 5
+              __charge = M.max(0, __charge - 5)
+              __misses = __misses + 1
             }
           }
         }
-        if (!hit) {
+        /*
+        if (!hit && ) {
           __misses = __misses + 1
           __charge = M.max(0, __charge - 5)
         }
+        */
       }
       for (beat in soon) {
         if (beat != null) {
           var margin = (beat.position - __conductor.beatPosition)
-          if (margin < -1  && !beat.hit && !beat.miss) {
+          if (margin < -1  && beat.safe && !beat.hit && !beat.miss) {
             beat.miss()
             __misses = __misses + 1
-            __charge = M.max(0, __charge - 3)
+            // __charge = M.max(0, __charge - 3)
           }
         }
       }
     }
     static draw(dt) {
+      Canvas.offset(__shakePos.x, __shakePos.y)
       Canvas.cls()
       __decorations.each {|decor| decor.draw(dt) }
 
@@ -241,13 +312,17 @@ class Game {
       var centerTarget = Vec.new(centerX, lineY)
       var leftTarget = Vec.new(centerX - (width + spacing), lineY)
       var rightTarget = Vec.new(centerX + (width + spacing), lineY)
+      centerLeft = center
+      centerRight = center
+      // Draw to edge of screen in same direction
       var result = leftTarget + (leftTarget - centerLeft)
       Canvas.line(centerLeft.x, centerLeft.y, result.x, result.y, Color.white)
       result = rightTarget + (rightTarget - centerRight)
       Canvas.line(centerRight.x, centerRight.y, result.x, result.y, Color.white)
 
 
-      var soon = ((__conductor.beatPosition.floor - 3)...(__conductor.beatPosition.floor + 10)).map {|n| BEATS[n] }
+      var soon = []
+      ((__conductor.beatPosition.floor - 3)...(__conductor.beatPosition.floor + 10)).map {|n| BEATS[n] }.where{|n| n != null }.each {|beats| soon = soon + beats }
       for (beat in soon) {
         if (beat != null) {
           var beatPos = (beat.position - __conductor.beatPosition)
@@ -265,13 +340,26 @@ class Game {
           }
 
           var direction = (target - origin).unit
+          var height = centerTarget - (centerTarget - center).unit * beatPos * 15
           var pos = target - direction * beatPos * 15
-          if (beatPos <= 10 && pos.y >= origin.y) {
+          // Canvas.line(0, height.y, Canvas.width, height.y, Color.blue)
+          if (pos.y >= origin.y) {
+          // if (beatPos <= 10 && pos.y >= origin.y) {
             var radius = M.mid(8, 9 - beatPos, 1)
-            if (beat.hit) {
-              Canvas.circle(pos.x, pos.y, radius, Color.green)
+            if (beat.safe) {
+              if (beat.hit) {
+                Canvas.circle(pos.x, pos.y, radius, Color.green)
+              } else {
+                Canvas.circlefill(pos.x, pos.y, radius, Color.green)
+              }
+              Canvas.print("O", pos.x - 3, pos.y - 3, Color.black)
             } else {
-              Canvas.circlefill(pos.x, pos.y, radius, Color.green)
+              if (beat.hit) {
+                Canvas.circle(pos.x, pos.y, radius, Color.red)
+              } else {
+                Canvas.circlefill(pos.x, pos.y, radius, Color.red)
+              }
+              Canvas.print("X", pos.x - 3, pos.y - 3, Color.black)
             }
           }
         }
@@ -307,8 +395,10 @@ class Game {
         Canvas.line(center.x - __charge, 8, center.x + __charge, 8, Color.white)
       }
 
+      Canvas.offset()
       Canvas.print("Score: %(__score)", 0, 0, Color.white)
       Canvas.print("Misses: %(__misses)", 0, 8, Color.white)
       Canvas.print("Time %(mins):%(secs):%(msecs)", 0, 16, Color.white)
     }
+
 }
