@@ -289,6 +289,8 @@ class Game {
       Canvas.cls()
       __decorations.each {|decor| decor.draw(dt) }
 
+      var theta = 35.5
+
       var width = 60
       var height = 17
       var spacing = 32
@@ -320,46 +322,44 @@ class Game {
       result = rightTarget + (rightTarget - centerRight)
       Canvas.line(centerRight.x, centerRight.y, result.x, result.y, Color.white)
 
-
       var soon = []
       ((__conductor.beatPosition.floor - 3)...(__conductor.beatPosition.floor + 10)).map {|n| BEATS[n] }.where{|n| n != null }.each {|beats| soon = soon + beats }
       for (beat in soon) {
         if (beat != null) {
           var beatPos = (beat.position - __conductor.beatPosition)
-          var target
           var origin
+          var angle
           if (beat.action == 0) {
-            target = leftTarget
             origin = centerLeft
+            angle = theta
           } else if (beat.action == 1) {
-            target = centerTarget
             origin = center
+            angle = 0
           } else if (beat.action == 2) {
-            target = rightTarget
             origin = centerRight
+            angle = -theta
           }
 
-          var direction = (target - origin).unit
-          var height = centerTarget - (centerTarget - center).unit * beatPos * 15
-          var pos = target - direction * beatPos * 15
-          // Canvas.line(0, height.y, Canvas.width, height.y, Color.blue)
+          var x = center.x + M.sin(angle) * (114 - beatPos * 15)
+          var pos = Vec.new()
+          pos.x = M.round(x)
+          pos.y = lineY - beatPos * 15
           if (pos.y >= origin.y) {
-          // if (beatPos <= 10 && pos.y >= origin.y) {
             var radius = M.mid(8, 9 - beatPos, 1)
             if (beat.safe) {
               if (beat.hit) {
                 Canvas.circle(pos.x, pos.y, radius, Color.green)
               } else {
                 Canvas.circlefill(pos.x, pos.y, radius, Color.green)
+                Canvas.print("O", pos.x - 3, pos.y - 3, Color.black)
               }
-              Canvas.print("O", pos.x - 3, pos.y - 3, Color.black)
             } else {
               if (beat.hit) {
                 Canvas.circle(pos.x, pos.y, radius, Color.red)
               } else {
                 Canvas.circlefill(pos.x, pos.y, radius, Color.red)
+                Canvas.print("X", pos.x - 3, pos.y - 3, Color.black)
               }
-              Canvas.print("X", pos.x - 3, pos.y - 3, Color.black)
             }
           }
         }
