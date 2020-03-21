@@ -9,18 +9,21 @@ import "./keys" for Key
 
 var BIT_RATE = 44100
 
+var DEBUG = true
+
 var R = Random.new()
 var D_PI = Num.pi / 180
 
 var LEFT_KEY = Key.new("left", false, -1)
 var RIGHT_KEY = Key.new("right", false, 1)
 var SPACE_KEY = Key.new("space", false, true)
-var SAVE_KEY = Key.new("return", false, true)
+var SAVE_KEY = Key.new("s", false, true)
 
 var ZERO_KEY = Key.new("0", false, true)
 var STOP_KEY = Key.new("backspace", false, true)
-var PLAY_KEY = Key.new("-", false, true)
+var PLAY_KEY = Key.new("return", false, true)
 var BEAT_KEY = Key.new("=", false, -1)
+var BACK_KEY = Key.new("-", false, -1)
 var PLAY_LEVEL_KEY = Key.new("p", false, -1)
 
 var CLEAR_KEY = Key.new("[", false, true)
@@ -31,79 +34,13 @@ var EDITOR_KEYS = [
   Key.new("3", false, 2)
 ]
 
-class LevelEditor {
-  construct new() {
+class Level {
+  clear() { _level = {} }
+  beats { _level }
+  bpm { _bpm }
+  file { _file }
+  construct load() {
     _level = {}
-    _mode = true
-    _beat = 0
-    _conductor = Conductor.new()
-    load()
-  }
-
-
-  level { _level }
-  stop() {
-    _conductor.stop()
-  }
-
-  update() {
-    if (CLEAR_KEY.update()) {
-      _level = {}
-    }
-    if (BEAT_KEY.update()) {
-      _conductor.playBeat(_conductor.beatPosition + 1)
-    }
-    if (PLAY_KEY.update()) {
-      _conductor.play()
-    }
-    if (STOP_KEY.update()) {
-      _conductor.stop()
-    }
-    if (ZERO_KEY.update()) {
-      for (row in _level.values) {
-        for (beat in row) {
-          if (beat != null) {
-            beat.reset()
-          }
-        }
-      }
-      _conductor.beatPosition = 0
-      _conductor.stop()
-    }
-    _beat = _conductor.beatPosition.floor
-    EDITOR_KEYS.each {|key|
-      if (key.update()) {
-        if (key.action >= 0) {
-          if (!_level.containsKey(_beat)) {
-            _level[_beat] = [null, null, null]
-          }
-          if (_level[_beat][key.action] == null) {
-            _level[_beat][key.action] = Beat.new(_beat, key.action, !!_mode)
-          } else {
-            _level[_beat][key.action] = null
-          }
-        } else {
-          _mode = !_mode
-        }
-      }
-    }
-    if (SAVE_KEY.update()) {
-      save()
-    }
-  }
-
-  draw() {
-    var left = Canvas.width - (8 * _beat.toString.count)
-    Canvas.print(_beat, left, 0, Color.white)
-    if (_mode) {
-      Canvas.print("PICKUP", left - 8 * 7, 0, Color.green)
-    } else {
-      Canvas.print("DODGE", left - 8 * 6, 0, Color.red)
-
-    }
-  }
-
-  load() {
     var lines = FileSystem.load("level.dat").split("\n")
     var tokens = lines[0].split(" ")
     if (tokens[0] == "FILE") {
@@ -128,16 +65,13 @@ class LevelEditor {
           _level[beatNo][i] = Beat.new(beatNo, i, false)
         }
       }
-
     }
-
   }
-
   save() {
     var lines = []
     var fileName = "race-to-mars.ogg"
     lines.add("FILE %(fileName)")
-    lines.add("BPM %(_conductor.bpm)")
+    lines.add("BPM %(_bpm)")
     for (beatNo in _level.keys) {
       var beats = _level[beatNo]
       var line = "%(beatNo)="
@@ -156,6 +90,100 @@ class LevelEditor {
     }
     System.print(lines.join("\n"))
     FileSystem.save("level.dat", lines.join("\n"))
+  }
+}
+
+class LevelEditor {
+  construct new() {
+    _mode = true
+    _beat = 0
+    _conductor = Conductor.new()
+    _level = Level.load()
+    _beats = _level.beats
+  }
+
+
+  level { _beats }
+  stop() {
+    _conductor.stop()
+  }
+
+  update() {
+    if (CLEAR_KEY.update()) {
+      _level.clear()
+      _beats = _level.beats
+    }
+    if (BEAT_KEY.update()) {
+      _conductor.playBeat(_conductor.beatPosition)
+    }
+    if (BACK_KEY.update()) {
+      _conductor.beatPosition = (_conductor.beatPosition - 1).floor
+      _conductor.update()
+    }
+    if (PLAY_KEY.update()) {
+      _conductor.play()
+    }
+    if (PLAY_LEVEL_KEY.update()) {
+      _conductor.beatPosition = 0
+      _conductor.play()
+    }
+    if (STOP_KEY.update()) {
+      _conductor.stop()
+    }
+    if (ZERO_KEY.update()) {
+      for (row in _beats.values) {
+        for (beat in row) {
+          if (beat != null) {
+            beat.reset()
+          }
+        }
+      }
+      _conductor.beatPosition = 0
+      _conductor.stop()
+    }
+    _beat = _conductor.beatPosition.round
+    EDITOR_KEYS.each {|key|
+      if (key.update()) {
+        if (key.action >= 0) {
+          if (!_beats.containsKey(_beat)) {
+            _beats[_beat] = [null, null, null]
+          }
+          if (_beats[_beat][key.action] == null) {
+            _beats[_beat][key.action] = Beat.new(_beat, key.action, !!_mode)
+          } else {
+            _beats[_beat][key.action] = null
+          }
+        } else {
+          _mode = !_mode
+        }
+      }
+    }
+    if (SAVE_KEY.update()) {
+      save()
+    }
+  }
+
+  draw() {
+      var height = 17
+      var lineY = Canvas.height - height / 2 - 12
+    var start = _conductor.beatPosition
+    for (l in -1...4) {
+      var beatPos = l - (start - start.floor)
+      var height = lineY - beatPos * 15
+      Canvas.line(0, height, Canvas.width, height, Color.orange)
+    }
+    var left = Canvas.width - (8 * _beat.toString.count)
+    Canvas.print(_beat, left, 0, Color.white)
+    if (_mode) {
+      Canvas.print("PICKUP", left - 8 * 7, 0, Color.green)
+    } else {
+      Canvas.print("DODGE", left - 8 * 6, 0, Color.red)
+
+    }
+  }
+
+  save() {
+    _level.save()
   }
 
   conductor { _conductor }
@@ -246,7 +274,8 @@ class Conductor {
   }
 
   playBeat(n) {
-    n = n.floor - 0.05
+
+    n = M.max(0, n.round - 0.05)
     if (_audio) {
       _audio.stop()
       _audio = null
@@ -281,7 +310,10 @@ class Conductor {
   position { _position }
   length { _length }
   beatPosition { _beatPosition }
-  beatPosition=(v) { _beatPosition = v }
+  beatPosition=(v) {
+    _beatPosition = M.max(0, v)
+    _position = _beatPosition * _crotchet
+  }
   bpm { _bpm }
 }
 
@@ -330,7 +362,7 @@ class SpaceLine is Decoration {
 
 class Game {
     static init() {
-      __editor = LevelEditor.new()
+      __editor = DEBUG ? LevelEditor.new() : null
       __shake = 0
       __shadePos = 0
       __flash = 0
@@ -369,14 +401,25 @@ class Game {
         var theta = (-90 + R.int(280) - 140) * D_PI
         return SpaceLine.new(center, Vec.new(M.cos(theta), M.sin(theta)))
       }.toList
-      __level = __editor.level
+      if (__editor != null) {
+        __level = __editor.level
+      } else {
+        __level = Level.load().beats
+        __conductor.play()
+      }
       // DebugLevel.call()
     }
     static update() {
+      if (Keyboard.isKeyDown("escape")) {
+        Process.exit()
+      }
+
       __beat = __conductor.beatPosition.floor
-      __editor.update()
-      __level = __editor.level
-      __conductor = __editor.conductor
+      if (__editor != null) {
+        __editor.update()
+        __level = __editor.level
+        __conductor = __editor.conductor
+      }
       __conductor.update()
 
       if (__shake > 0) {
@@ -388,17 +431,12 @@ class Game {
       }
       __decorations.each {|decor| decor.update() }
       __tweenX = M.mid(0, __tweenX + 0.34, 1)
-      if (Keyboard.isKeyDown("escape")) {
-        Process.exit()
-      }
-      if (PLAY_LEVEL_KEY.update()) {
-        __editor.conductor.beatPosition = 0
-        __editor.conductor.play()
-      }
       LEFT_KEY.update()
       RIGHT_KEY.update()
       SPACE_KEY.update()
 
+      // What if you can only move on the beat?
+      var beatMargin = (__conductor.beatPosition - __beat).abs
       if (LEFT_KEY.firing) {
         __oldX = __x
         __tweenX = 0
@@ -605,6 +643,9 @@ class Game {
       Canvas.print("Score: %(__score)", 0, 0, Color.white)
       Canvas.print("Misses: %(__misses)", 0, 8, Color.white)
       Canvas.print("Time %(mins):%(secs):%(msecs)", 0, 16, Color.white)
-      __editor.draw()
+
+      if (__editor != null) {
+        __editor.draw()
+      }
     }
 }
