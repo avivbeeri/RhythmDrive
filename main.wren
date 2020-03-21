@@ -60,7 +60,7 @@ class LevelEditor {
       _conductor.stop()
     }
     if (ZERO_KEY.update()) {
-      for (row in _level) {
+      for (row in _level.values) {
         for (beat in row) {
           if (beat != null) {
             beat.reset()
@@ -93,7 +93,14 @@ class LevelEditor {
   }
 
   draw() {
-    Canvas.print(_beat, Canvas.width - (8 * _beat.toString.count), 0, Color.white)
+    var left = Canvas.width - (8 * _beat.toString.count)
+    Canvas.print(_beat, left, 0, Color.white)
+    if (_mode) {
+      Canvas.print("PICKUP", left - 8 * 7, 0, Color.green)
+    } else {
+      Canvas.print("DODGE", left - 8 * 6, 0, Color.red)
+
+    }
   }
 
   load() {
@@ -229,18 +236,17 @@ class Conductor {
   }
 
   play() {
-    if (_audio) {
-      _audio.stop()
-      _audio = null
+    if (!_audio) {
+      var channel = AudioEngine.play("music")
+      channel.position = BIT_RATE * _crotchet * _beatPosition
+      _audio = channel
+      _length = _audio.length / BIT_RATE
+      update()
     }
-    var channel = AudioEngine.play("music")
-    channel.position = BIT_RATE * _crotchet * _beatPosition
-    _audio = channel
-    _length = _audio.length / BIT_RATE
   }
 
   playBeat(n) {
-    n = n.floor - 0.25
+    n = n.floor - 0.05
     if (_audio) {
       _audio.stop()
       _audio = null
