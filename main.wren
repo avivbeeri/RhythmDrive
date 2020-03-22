@@ -397,10 +397,10 @@ class RhythmGame {
       _misses = 0
       _lives = 3
       _alive = true
+      _deadBeat = 0
       _oldX = 0
       _x = 0
       _tweenX = 0
-      AudioEngine.load("music", "race-to-mars.ogg")
 
       if (_editor != null) {
         _conductor = _editor.conductor
@@ -427,14 +427,14 @@ class RhythmGame {
      update() {
       _alive = _lives > 0
       if (!_alive) {
-        _controller.push(GameOverScene, [ _score ])
+        _controller.push(GameOverScene, [ _score, _misses ])
         _conductor.stop()
         return
       }
       if (_conductor.position >= _conductor.length) {
         __x = 0
         draw(0)
-        _controller.push(WinScene, [ _score ])
+        _controller.push(WinScene, [ _score, _misses ])
         _conductor.stop()
         return
       }
@@ -528,6 +528,14 @@ class RhythmGame {
         }
       }
       _charge = M.mid(0, _charge, 5)
+      if (_deadBeat == 0 && _charge == 0) {
+        _deadBead = _lastBeat
+        _level = {}
+        draw(0)
+        _conductor.stop()
+        _controller.push(GameOverScene, [ _score, _misses ])
+        return
+      }
 
       if (_conductor.beatPosition.floor - _lastBeat == 1 && _conductor.playing) {
         _lastBeat = _conductor.beatPosition.floor
@@ -704,6 +712,7 @@ class Game {
     Canvas.resize(320, 180)
     Window.resize(scale * Canvas.width, scale * Canvas.height)
     // __scene = RhythmGame.begin(this, [])
+    AudioEngine.load("music", "race-to-mars.ogg")
     push(TitleScene)
   }
 
@@ -808,6 +817,9 @@ class TitleScene {
     _position = 0
   }
   update() {
+    if (SPACE_KEY.update()) {
+      _controller.push(RhythmGame)
+    }
   }
 
   draw(alpha) {
