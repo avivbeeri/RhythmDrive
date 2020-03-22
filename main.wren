@@ -1,3 +1,5 @@
+var DEBUG = true
+
 import "graphics" for Canvas, Color
 import "random" for Random
 import "dome" for Window, Process
@@ -8,8 +10,6 @@ import "io" for FileSystem
 import "./keys" for Key
 
 var BIT_RATE = 44100
-
-var DEBUG = true
 
 var R = Random.new()
 var D_PI = Num.pi / 180
@@ -23,7 +23,7 @@ var ZERO_KEY = Key.new("0", false, true)
 var STOP_KEY = Key.new("backspace", false, true)
 var PLAY_KEY = Key.new("return", false, true)
 var BEAT_KEY = Key.new("=", false, -1)
-var BACK_KEY = Key.new("-", false, -1)
+var BACK_KEY = Key.new("-", true, -1)
 var PLAY_LEVEL_KEY = Key.new("p", false, -1)
 
 var CLEAR_KEY = Key.new("[", false, true)
@@ -53,16 +53,27 @@ class Level {
     for (lineIndex in 2...lines.count) {
       var line = lines[lineIndex]
       tokens = line.split("=")
-      var beatNo = Num.fromString(tokens[0])
-      if (!_level[beatNo]) {
-        _level[beatNo] = [null, null, null]
+      if (tokens.count == 2) {
+        var beatNo = Num.fromString(tokens[0])
+        if (!_level[beatNo]) {
+          _level[beatNo] = [null, null, null]
+        }
+        for (i in 0...3) {
+          var type = tokens[1][i]
+          if (type == "S") {
+            _level[beatNo][i] = Beat.new(beatNo, i, true)
+          } else if (type == "D") {
+            _level[beatNo][i] = Beat.new(beatNo, i, false)
+          }
+        }
       }
-      for (i in 0...3) {
-        var type = tokens[1][i]
-        if (type == "S") {
-          _level[beatNo][i] = Beat.new(beatNo, i, true)
-        } else if (type == "D") {
-          _level[beatNo][i] = Beat.new(beatNo, i, false)
+    }
+  }
+  reset() {
+    for (row in beats.values) {
+      for (beat in row) {
+        if (beat != null) {
+          beat.reset()
         }
       }
     }
@@ -100,6 +111,7 @@ class LevelEditor {
     _conductor = Conductor.new()
     _level = Level.load()
     _beats = _level.beats
+    _counter = 0
   }
 
 
@@ -109,21 +121,25 @@ class LevelEditor {
   }
 
   update() {
+    _counter = M.max(0, _counter - 1)
     if (CLEAR_KEY.update()) {
       _level.clear()
       _beats = _level.beats
     }
     if (BEAT_KEY.update()) {
       _conductor.playBeat(_conductor.beatPosition)
+      _level.reset()
     }
     if (BACK_KEY.update()) {
-      _conductor.beatPosition = (_conductor.beatPosition - 1).floor
+      _conductor.beatPosition = (_conductor.beatPosition - 1).round
       _conductor.update()
     }
     if (PLAY_KEY.update()) {
+      _level.reset()
       _conductor.play()
     }
     if (PLAY_LEVEL_KEY.update()) {
+      _level.reset()
       _conductor.beatPosition = 0
       _conductor.play()
     }
@@ -159,6 +175,7 @@ class LevelEditor {
       }
     }
     if (SAVE_KEY.update()) {
+      _counter = 30
       save()
     }
   }
@@ -178,7 +195,9 @@ class LevelEditor {
       Canvas.print("PICKUP", left - 8 * 7, 0, Color.green)
     } else {
       Canvas.print("DODGE", left - 8 * 6, 0, Color.red)
-
+    }
+    if (_counter > 0) {
+      Canvas.print("Saved", Canvas.width - 5 * 8, 8, Color.orange)
     }
   }
 
@@ -253,7 +272,10 @@ class Conductor {
     _beatPosition = 0
     _audio = null
     _length = 0
+    _playing = false
   }
+
+  playing { _playing }
   construct new(audio) {
     _bpm = 160
     _crotchet = 60 / _bpm //sec per beat
@@ -261,6 +283,7 @@ class Conductor {
     _beatPosition = 0
     _audio = audio
     _length = audio.length / BIT_RATE
+    _playing = true
   }
 
   play() {
@@ -270,24 +293,22 @@ class Conductor {
       _audio = channel
       _length = _audio.length / BIT_RATE
       update()
+      _playing = true
     }
   }
 
   playBeat(n) {
 
     n = M.max(0, n.round - 0.05)
-    if (_audio) {
-      _audio.stop()
-      _audio = null
-    }
+    stop()
     var channel = AudioEngine.play("music")
     channel.position = BIT_RATE * _crotchet * n
     _audio = channel
     _beatPosition = n
     _position = n * _crotchet
     _length = (n + 1) * _crotchet
+    _playing = true
   }
-
 
   update() {
     if (_audio) {
@@ -295,13 +316,13 @@ class Conductor {
       _beatPosition = _position / _crotchet
       if (_position >= _length) {
         _position = _length
-        _audio.stop()
-        _audio = null
+        stop()
       }
     }
   }
   stop() {
     if (_audio) {
+      _playing = false
       _audio.stop()
       _audio = null
     }
@@ -366,9 +387,10 @@ class Game {
       __shake = 0
       __shadePos = 0
       __flash = 0
-      __charge = 0
+      __charge = 5
       __score = 0
       __misses = 0
+      __lives = 3
       Canvas.resize(320, 180)
       Canvas.offset(5, 5)
       var scale = 3
@@ -393,6 +415,7 @@ class Game {
       } else {
         __conductor = Conductor.new()
       }
+      __lastBeat = 0
 
       var centerX = Canvas.width / 2
       var centerY = Canvas.height / 4
@@ -410,7 +433,7 @@ class Game {
       // DebugLevel.call()
     }
     static update() {
-      if (Keyboard.isKeyDown("escape")) {
+      if (!DEBUG && Keyboard.isKeyDown("escape")) {
         Process.exit()
       }
 
@@ -464,23 +487,24 @@ class Game {
               System.print(margin)
               hit = true
               beat.hit()
-              if (absMargin < 0.1) {
+              if (__conductor.playing && absMargin < 0.1) {
                 __score = __score + 5
-                __charge = __charge + 3
+                __charge = __charge + 1
                 __flash = 3
-              } else if (absMargin < 0.3) {
+              } else if (__conductor.playing && absMargin < 0.3) {
                 __score = __score + 3
                 __charge = __charge + 1
                 __flash = 3
               } else if (absMargin < 0.5) {
                 __score = __score + 1
+                __charge = __charge + 1
                 __flash = 3
               }
             } else if (!beat.safe && absMargin < 0.1) {
               beat.hit()
               __shake = 5
-              __charge = M.max(0, __charge - 5)
-              __misses = __misses + 1
+              // __charge = M.max(0, __charge - 5)
+              __lives = M.max(0, __lives - 1)
             }
           }
         }
@@ -497,9 +521,19 @@ class Game {
           if (margin < -1  && beat.safe && !beat.hit && !beat.miss) {
             beat.miss()
             __misses = __misses + 1
-            // __charge = M.max(0, __charge - 3)
+            __charge = M.max(0, __charge - 1)
           }
         }
+      }
+      __charge = M.mid(0, __charge, 5)
+
+      if (__conductor.beatPosition.floor - __lastBeat == 1 && __conductor.playing) {
+        __lastBeat = __conductor.beatPosition.floor
+        // __charge = M.max(0, __charge - 1)
+        if (__lives == 1) {
+        }
+      } else if (PLAY_KEY.firing || PLAY_LEVEL_KEY.firing) {
+        __lastBeat = __conductor.beatPosition.floor
       }
     }
 
@@ -550,7 +584,7 @@ class Game {
       Canvas.line(centerX, centerY, centerX, Canvas.height, Color.white)
       Canvas.circlefill(center.x, center.y, 12, Color.white)
       var beatDiff = (__conductor.beatPosition - __conductor.beatPosition.floor).abs
-      for (n in 0...5) {
+      for (n in 1...6) {
         Canvas.circle(center.x, center.y, (12 + beatDiff * 4 * n).floor, n <= 3 ? Color.white : Color.lightgray)
       }
       var centerLeft = Vec.new(centerX - 4, centerY)
@@ -625,24 +659,32 @@ class Game {
       secs = (secs % 60)
       var msecs = ((secs - secs.floor) * 10).toString[0]
       secs = secs.floor
-      if (mins < 9) {
+      if (mins <= 9) {
         mins = "0%(mins)"
       }
-      if (secs < 9) {
+      if (secs <= 9) {
         secs = "0%(secs)"
       }
 
       if (__charge > 0) {
+        if (__lives == 1 || __charge == 1) {
+          Canvas.offset(__shakePos.x, __shakePos.y)
+        }
         var color = Color.green
-        Canvas.rectfill(center.x + 1, 0, __charge, 8, color)
-        Canvas.rectfill(center.x - __charge, 0, __charge, 8, color)
-        Canvas.line(center.x - __charge, 8, center.x + __charge, 8, Color.white)
+        var charge = M.mid(0, __charge, 5) * 10
+        Canvas.rectfill(center.x, 0, charge + 1, 8, color)
+        Canvas.rectfill(center.x - charge, 0, charge, 8, color)
+        Canvas.line(center.x - charge, 8, center.x + charge, 8, Color.white)
+        var text = __charge.toString.count * 4
+        Canvas.print(__charge, center.x - text, 0, Color.black)
+        Canvas.offset()
       }
 
       Canvas.offset()
-      Canvas.print("Score: %(__score)", 0, 0, Color.white)
-      Canvas.print("Misses: %(__misses)", 0, 8, Color.white)
-      Canvas.print("Time %(mins):%(secs):%(msecs)", 0, 16, Color.white)
+      Canvas.print("Time %(mins):%(secs):%(msecs)", 0, 0, Color.white)
+      Canvas.print("Score: %(__score)", 0, 8, Color.white)
+      Canvas.print("Misses: %(__misses)", 0, 16, Color.white)
+      Canvas.print("Lives: %(__lives)", 0, 24, Color.white)
 
       if (__editor != null) {
         __editor.draw()

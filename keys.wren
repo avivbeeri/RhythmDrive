@@ -37,7 +37,7 @@ class DigitalInput {
       if (!isPressed) {
         _counter = 0
       } else if (fire) {
-        _counter = 8
+        _counter = 10
       } else {
         _counter = _counter - 1
       }
