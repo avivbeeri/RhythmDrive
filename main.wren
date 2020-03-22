@@ -427,7 +427,7 @@ class RhythmGame {
      update() {
       _alive = _lives > 0
       if (!_alive) {
-        _controller.push(GameOverScene, [ _score, _misses ])
+        _controller.push(GameOverScene, [ _score, _misses, "death" ])
         _conductor.stop()
         return
       }
@@ -533,7 +533,7 @@ class RhythmGame {
         _level = {}
         draw(0)
         _conductor.stop()
-        _controller.push(GameOverScene, [ _score, _misses ])
+        _controller.push(GameOverScene, [ _score, _misses, "lost" ])
         return
       }
 
@@ -738,6 +738,10 @@ class GameOverScene {
   construct begin(controller, args) {
     _controller = controller
     _score = args[0]
+    _misses = args[1]
+    _mode = args[2]
+    _color = _mode == "death" ? Color.red : Color.black
+    _text = _mode == "death" ? Color.black : Color.white
     _size = 0
     _grow = Fiber.new {
       while (_size < Canvas.width * 3 / 4) {
@@ -759,13 +763,19 @@ class GameOverScene {
 
   draw(alpha) {
     if (_grow) {
-      Canvas.circlefill(Canvas.width / 2, Canvas.height / 4, _size, Color.red)
+      Canvas.circlefill(Canvas.width / 2, Canvas.height / 4, _size, _color)
     } else {
-      Canvas.cls(Color.red)
+      Canvas.cls(_color)
     }
-    printCenter("GAME OVER", Canvas.height / 4 - 4, Color.black)
-    printCenter("Your ship lost the beat", Canvas.height / 4 + 12, Color.black)
-    printCenter("Press SPACE to try again", Canvas.height - 12, Color.black)
+    printCenter("GAME OVER", Canvas.height / 4 - 4, _text)
+    if (_mode == "death") {
+      printCenter("Your ship was destroyed!", Canvas.height / 4 + 12, _text)
+    } else {
+      printCenter("Your ship lost the beat!", Canvas.height / 4 + 12, _text)
+    }
+    printCenter("Press SPACE to try again", Canvas.height - 12, _text)
+    printCenter("You scored %(_score) points!", Canvas.height / 4 + 28, _text)
+    printCenter("You missed %(_misses) beats!", Canvas.height / 4 + 36, _text)
   }
 
   printCenter(text, y, color) {
@@ -776,6 +786,7 @@ class WinScene {
   construct begin(controller, args) {
     _controller = controller
     _score = args[0]
+    _misses = args[1]
     _size = 0
     _grow = Fiber.new {
       while (_size < Canvas.width * 3 / 4) {
@@ -804,6 +815,8 @@ class WinScene {
     printCenter("SUCCESS!", Canvas.height / 4 - 4, Color.black)
     printCenter("Great Navigation", Canvas.height / 4 + 12, Color.black)
     printCenter("You kept to the beat", Canvas.height / 4 + 20, Color.black)
+    printCenter("You scored %(_score) points!", Canvas.height / 4 + 36, Color.black)
+    printCenter("You missed %(_misses) beats!", Canvas.height / 4 + 44, Color.black)
     printCenter("Press SPACE to try again", Canvas.height - 12, Color.black)
   }
 
@@ -866,7 +879,8 @@ class TitleScene {
     Canvas.ellipse(pX, playerY, pX + width, playerY + height, Color.red)
     var shade = Color.rgb(0, 0, 0, 128)
     Canvas.rectfill(0, 0, Canvas.width, Canvas.height, shade)
-    Canvas.print("RhythmDrive", 46, Canvas.height / 2 - 10, Color.white, "title")
+    Canvas.print("Rhythm", 46, Canvas.height / 2 - 10, Color.white, "title")
+    Canvas.print("Drive", 46 + 21 * 6, Canvas.height / 2 - 10, Color.purple, "title")
     printCenter("Press SPACE to begin!", Canvas.height / 2 + 20, Color.white)
   }
 
