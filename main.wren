@@ -1,4 +1,4 @@
-var DEBUG = true
+var DEBUG = false
 
 import "graphics" for Canvas, Color
 import "random" for Random
@@ -381,169 +381,175 @@ class SpaceLine is Decoration {
 
 }
 
-class Game {
-    static init() {
-      __editor = DEBUG ? LevelEditor.new() : null
-      __shake = 0
-      __shadePos = 0
-      __flash = 0
-      __charge = 5
-      __score = 0
-      __misses = 0
-      __lives = 3
-      Canvas.resize(320, 180)
-      Canvas.offset(5, 5)
-      var scale = 3
-      Window.resize(scale * Canvas.width, scale * Canvas.height)
-      __oldX = 0
-      __x = 0
-      __tweenX = 0
-      // AudioEngine.load("music", "extremeaction.ogg")
-      // AudioEngine.load("music", "click.ogg")
+class RhythmGame {
+   construct bootstrap() { /* Called by  DOME */ }
+   construct begin(controller, args) {
+     _controller = controller
+     init()
+   }
+   init() {
+      _editor = DEBUG ? LevelEditor.new() : null
+      _shake = 0
+      _shakePos = Vec.new()
+      _flash = 0
+      _charge = 5
+      _score = 0
+      _misses = 0
+      _lives = 3
+      _alive = true
+      _oldX = 0
+      _x = 0
+      _tweenX = 0
       AudioEngine.load("music", "race-to-mars.ogg")
-      // var channel = AudioEngine.play("music")
-      // channel.position = BIT_RATE * 60
-      // __conductor = Conductor.new(channel)
-      /*
-        var channel = AudioEngine.play("music")
-        __conductor.stop()
-        __conductor = Conductor.new(channel)
-      */
 
-      if (__editor != null) {
-        __conductor = __editor.conductor
+      if (_editor != null) {
+        _conductor = _editor.conductor
       } else {
-        __conductor = Conductor.new()
+        _conductor = Conductor.new()
       }
-      __lastBeat = 0
+      _lastBeat = 0
 
       var centerX = Canvas.width / 2
       var centerY = Canvas.height / 4
       var center = Vec.new(centerX, centerY)
-      __decorations = (1...40).map {|n|
+      _decorations = (1...40).map {|n|
         var theta = (-90 + R.int(280) - 140) * D_PI
         return SpaceLine.new(center, Vec.new(M.cos(theta), M.sin(theta)))
       }.toList
-      if (__editor != null) {
-        __level = __editor.level
+      if (_editor != null) {
+        _level = _editor.level
       } else {
-        __level = Level.load().beats
-        __conductor.play()
+        _level = Level.load().beats
+        _conductor.play()
       }
       // DebugLevel.call()
     }
-    static update() {
-      if (!DEBUG && Keyboard.isKeyDown("escape")) {
-        Process.exit()
+     update() {
+      _alive = _lives > 0
+      if (!_alive) {
+        _controller.push(GameOverScene, [ _score ])
+        _conductor.stop()
+        return
+      }
+      if (_conductor.position >= _conductor.length) {
+        __x = 0
+        draw(0)
+        _controller.push(WinScene, [ _score ])
+        _conductor.stop()
+        return
       }
 
-      __beat = __conductor.beatPosition.floor
-      if (__editor != null) {
-        __editor.update()
-        __level = __editor.level
-        __conductor = __editor.conductor
+      _beat = _conductor.beatPosition.floor
+      if (_editor != null) {
+        _editor.update()
+        _level = _editor.level
+        _conductor = _editor.conductor
       }
-      __conductor.update()
+      _conductor.update()
 
-      if (__shake > 0) {
-        __shake = __shake - 1
+      if (_shake > 0) {
+        _shake = _shake - 1
         var magnitude = 6
-        __shakePos = Vec.new(R.int(magnitude) - magnitude/2, R.int(magnitude) - magnitude / 2)
+        _shakePos = Vec.new(R.int(magnitude) - magnitude/2, R.int(magnitude) - magnitude / 2)
       } else {
-        __shakePos = Vec.new()
+        _shakePos = Vec.new()
       }
-      __decorations.each {|decor| decor.update() }
-      __tweenX = M.mid(0, __tweenX + 0.34, 1)
+      _decorations.each {|decor| decor.update() }
+      _tweenX = M.mid(0, _tweenX + 0.34, 1)
       LEFT_KEY.update()
       RIGHT_KEY.update()
       SPACE_KEY.update()
 
       // What if you can only move on the beat?
-      var beatMargin = (__conductor.beatPosition - __beat).abs
+      var beatMargin = (_conductor.beatPosition - _beat).abs
       if (LEFT_KEY.firing) {
-        __oldX = __x
-        __tweenX = 0
-        __x = __x + LEFT_KEY.action
+        _oldX = _x
+        _tweenX = 0
+        _x = _x + LEFT_KEY.action
       } else if (RIGHT_KEY.firing) {
-        __oldX = __x
-        __tweenX = 0
-        __x = __x + RIGHT_KEY.action
+        _oldX = _x
+        _tweenX = 0
+        _x = _x + RIGHT_KEY.action
       }
 
-      __x = M.mid(-1, __x, 1)
-      var notePosition = __x + 1
-      if (__flash) {
-        __flash = M.max(0, __flash - 1)
+      _x = M.mid(-1, _x, 1)
+      var notePosition = _x + 1
+      if (_flash) {
+        _flash = M.max(0, _flash - 1)
       }
       var soon = []
-      ((__conductor.beatPosition.floor - 1)...(__conductor.beatPosition.floor + 2)).map {|n| __level[n] }.where{|a| a != null }.each {|beats| soon = soon + beats }
+      ((_conductor.beatPosition.floor - 1)...(_conductor.beatPosition.floor + 2)).map {|n| _level[n] }.where{|a| a != null }.each {|beats| soon = soon + beats }
       var hit = false
       for (beat in soon) {
         if (beat != null) {
-          var margin = (beat.position - __conductor.beatPosition)
+          var margin = (beat.position - _conductor.beatPosition)
           var absMargin = margin.abs
           if (!beat.hit && absMargin < 0.5 && beat.action == notePosition) {
             if (SPACE_KEY.firing && beat.safe) {
               System.print(margin)
               hit = true
               beat.hit()
-              if (__conductor.playing && absMargin < 0.1) {
-                __score = __score + 5
-                __charge = __charge + 1
-                __flash = 3
-              } else if (__conductor.playing && absMargin < 0.3) {
-                __score = __score + 3
-                __charge = __charge + 1
-                __flash = 3
+              if (_conductor.playing && absMargin < 0.1) {
+                _score = _score + 5
+                _charge = _charge + 1
+                _flash = 3
+              } else if (_conductor.playing && absMargin < 0.3) {
+                _score = _score + 3
+                _charge = _charge + 1
+                _flash = 3
               } else if (absMargin < 0.5) {
-                __score = __score + 1
-                __charge = __charge + 1
-                __flash = 3
+                _score = _score + 1
+                _charge = _charge + 1
+                _flash = 3
               }
             } else if (!beat.safe && absMargin < 0.1) {
               beat.hit()
-              __shake = 5
-              // __charge = M.max(0, __charge - 5)
-              __lives = M.max(0, __lives - 1)
+              _shake = 5
+              // _charge = M.max(0, _charge - 5)
+              _lives = M.max(0, _lives - 1)
             }
           }
         }
         /*
         if (!hit && ) {
-          __misses = __misses + 1
-          __charge = M.max(0, __charge - 5)
+          _misses = _misses + 1
+          _charge = M.max(0, _charge - 5)
         }
         */
       }
       for (beat in soon) {
         if (beat != null) {
-          var margin = (beat.position - __conductor.beatPosition)
+          var margin = (beat.position - _conductor.beatPosition)
           if (margin < -1  && beat.safe && !beat.hit && !beat.miss) {
             beat.miss()
-            __misses = __misses + 1
-            __charge = M.max(0, __charge - 1)
+            _misses = _misses + 1
+            _charge = M.max(0, _charge - 1)
           }
         }
       }
-      __charge = M.mid(0, __charge, 5)
+      _charge = M.mid(0, _charge, 5)
 
-      if (__conductor.beatPosition.floor - __lastBeat == 1 && __conductor.playing) {
-        __lastBeat = __conductor.beatPosition.floor
-        // __charge = M.max(0, __charge - 1)
-        if (__lives == 1) {
+      if (_conductor.beatPosition.floor - _lastBeat == 1 && _conductor.playing) {
+        _lastBeat = _conductor.beatPosition.floor
+        // _charge = M.max(0, _charge - 1)
+        if (_lives == 1) {
         }
       } else if (PLAY_KEY.firing || PLAY_LEVEL_KEY.firing) {
-        __lastBeat = __conductor.beatPosition.floor
+        _lastBeat = _conductor.beatPosition.floor
+      }
+
+      if (_charge <= 0) {
+        _dead = true
       }
     }
 
-    static serializeLevel() {
+     serializeLevel() {
       var lines = []
       var fileName = "race-to-mars.ogg"
       lines.add("FILE %(fileName)")
-      lines.add("BPM %(__conductor.bpm)")
-      for (beatNo in __level.keys) {
-        var beats = __level[beatNo]
+      lines.add("BPM %(_conductor.bpm)")
+      for (beatNo in _level.keys) {
+        var beats = _level[beatNo]
         var line = "%(beatNo)="
         for (beat in beats) {
           if (beat != null) {
@@ -562,10 +568,10 @@ class Game {
       FileSystem.save("level.dat", lines.join("\n"))
     }
 
-    static draw(dt) {
-      Canvas.offset(__shakePos.x, __shakePos.y)
+     draw(dt) {
+      Canvas.offset(_shakePos.x, _shakePos.y)
       Canvas.cls()
-      __decorations.each {|decor| decor.draw(dt) }
+      _decorations.each {|decor| decor.draw(dt) }
 
       var theta = 35.5
 
@@ -583,7 +589,7 @@ class Game {
       Canvas.line(0, lineY, Canvas.width, lineY, Color.purple)
       Canvas.line(centerX, centerY, centerX, Canvas.height, Color.white)
       Canvas.circlefill(center.x, center.y, 12, Color.white)
-      var beatDiff = (__conductor.beatPosition - __conductor.beatPosition.floor).abs
+      var beatDiff = (_conductor.beatPosition - _conductor.beatPosition.floor).abs
       for (n in 1...6) {
         Canvas.circle(center.x, center.y, (12 + beatDiff * 4 * n).floor, n <= 3 ? Color.white : Color.lightgray)
       }
@@ -601,10 +607,10 @@ class Game {
       Canvas.line(centerRight.x, centerRight.y, result.x, result.y, Color.white)
 
       var soon = []
-      ((__conductor.beatPosition.floor - 3)...(__conductor.beatPosition.floor + 10)).map {|n| __level[n] }.where{|n| n != null }.each {|beats| soon = soon + beats }
+      ((_conductor.beatPosition.floor - 3)...(_conductor.beatPosition.floor + 10)).map {|n| _level[n] }.where{|n| n != null }.each {|beats| soon = soon + beats }
       for (beat in soon) {
         if (beat != null) {
-          var beatPos = (beat.position - __conductor.beatPosition)
+          var beatPos = (beat.position - _conductor.beatPosition)
           var origin
           var angle
           if (beat.action == 0) {
@@ -643,18 +649,18 @@ class Game {
         }
       }
 
-      var x = M.lerp(__oldX, __tweenX, __x)
+      var x = M.lerp(_oldX, _tweenX, _x)
 
       var pX = centerX + x * (width + spacing) - (width / 2)
-      if (__flash > 0) {
-        Canvas.ellipsefill(pX, playerY, pX + width, playerY + height, __flash > 0 ? Color.white : Color.red)
+      if (_flash > 0) {
+        Canvas.ellipsefill(pX, playerY, pX + width, playerY + height, _flash > 0 ? Color.white : Color.red)
       } else {
         var bg = Color.rgb(Color.red.r, Color.red.g, Color.red.b, 128)
         Canvas.ellipsefill(pX, playerY, pX + width, playerY + height, bg)
-        Canvas.ellipse(pX, playerY, pX + width, playerY + height, __flash > 0 ? Color.white : Color.red)
+        Canvas.ellipse(pX, playerY, pX + width, playerY + height, _flash > 0 ? Color.white : Color.red)
       }
 
-      var secs = __conductor.length - __conductor.position
+      var secs = _conductor.length - _conductor.position
       var mins = (secs / 60).floor
       secs = (secs % 60)
       var msecs = ((secs - secs.floor) * 10).toString[0]
@@ -666,28 +672,184 @@ class Game {
         secs = "0%(secs)"
       }
 
-      if (__charge > 0) {
-        if (__lives == 1 || __charge == 1) {
-          Canvas.offset(__shakePos.x, __shakePos.y)
+      if (_charge > 0) {
+        if (_lives == 1 || _charge == 1) {
+          Canvas.offset(_shakePos.x, _shakePos.y)
         }
         var color = Color.green
-        var charge = M.mid(0, __charge, 5) * 10
+        var charge = M.mid(0, _charge, 5) * 10
         Canvas.rectfill(center.x, 0, charge + 1, 8, color)
         Canvas.rectfill(center.x - charge, 0, charge, 8, color)
         Canvas.line(center.x - charge, 8, center.x + charge, 8, Color.white)
-        var text = __charge.toString.count * 4
-        Canvas.print(__charge, center.x - text, 0, Color.black)
+        var text = _charge.toString.count * 4
+        Canvas.print(_charge, center.x - text, 0, Color.black)
         Canvas.offset()
       }
 
       Canvas.offset()
       Canvas.print("Time %(mins):%(secs):%(msecs)", 0, 0, Color.white)
-      Canvas.print("Score: %(__score)", 0, 8, Color.white)
-      Canvas.print("Misses: %(__misses)", 0, 16, Color.white)
-      Canvas.print("Lives: %(__lives)", 0, 24, Color.white)
+      Canvas.print("Score: %(_score)", 0, 8, Color.white)
+      Canvas.print("Misses: %(_misses)", 0, 16, Color.white)
+      Canvas.print("Lives: %(_lives)", 0, 24, Color.white)
 
-      if (__editor != null) {
-        __editor.draw()
+      if (_editor != null) {
+        _editor.draw()
       }
     }
+}
+
+class Game {
+  static init() {
+    var scale = 3
+    Canvas.resize(320, 180)
+    Window.resize(scale * Canvas.width, scale * Canvas.height)
+    // __scene = RhythmGame.begin(this, [])
+    push(TitleScene)
+  }
+
+  static update() {
+    if (!DEBUG && Keyboard.isKeyDown("escape")) {
+      Process.exit()
+    }
+    __scene.update()
+  }
+
+  static push(scene) { push(scene, []) }
+  static push(scene, args) {
+    __scene = scene.begin(this, args)
+  }
+
+  static draw(n) {
+    __scene.draw(n)
+  }
+}
+
+class GameOverScene {
+  construct begin(controller, args) {
+    _controller = controller
+    _score = args[0]
+    _size = 0
+    _grow = Fiber.new {
+      while (_size < Canvas.width * 3 / 4) {
+        _size = _size + 1
+        Fiber.yield(false)
+      }
+      return true
+    }
+  }
+  update() {
+    if (!_grow || _grow.call()) {
+      _grow = null
+      if (SPACE_KEY.update()) {
+        _controller.push(RhythmGame)
+      }
+    } else {
+    }
+  }
+
+  draw(alpha) {
+    if (_grow) {
+      Canvas.circlefill(Canvas.width / 2, Canvas.height / 4, _size, Color.red)
+    } else {
+      Canvas.cls(Color.red)
+    }
+    printCenter("GAME OVER", Canvas.height / 4 - 4, Color.black)
+    printCenter("Your ship lost the beat", Canvas.height / 4 + 12, Color.black)
+    printCenter("Press SPACE to try again", Canvas.height - 12, Color.black)
+  }
+
+  printCenter(text, y, color) {
+    Canvas.print(text, Canvas.width / 2 - 4 * (text.count), y, color)
+  }
+}
+class WinScene {
+  construct begin(controller, args) {
+    _controller = controller
+    _score = args[0]
+    _size = 0
+    _grow = Fiber.new {
+      while (_size < Canvas.width * 3 / 4) {
+        _size = _size + 1
+        Fiber.yield(false)
+      }
+      return true
+    }
+  }
+  update() {
+    if (!_grow || _grow.call()) {
+      _grow = null
+      if (SPACE_KEY.update()) {
+        _controller.push(RhythmGame)
+      }
+    } else {
+    }
+  }
+
+  draw(alpha) {
+    if (_grow) {
+      Canvas.circlefill(Canvas.width / 2, Canvas.height / 4, _size, Color.white)
+    } else {
+      Canvas.cls(Color.white)
+    }
+    printCenter("SUCCESS!", Canvas.height / 4 - 4, Color.black)
+    printCenter("Great Navigation", Canvas.height / 4 + 12, Color.black)
+    printCenter("You kept to the beat", Canvas.height / 4 + 20, Color.black)
+    printCenter("Press SPACE to try again", Canvas.height - 12, Color.black)
+  }
+
+  printCenter(text, y, color) {
+    Canvas.print(text, Canvas.width / 2 - 4 * (text.count), y, color)
+  }
+}
+
+class TitleScene {
+  construct begin(controller, args) {
+    _controller = controller
+    _position = 0
+  }
+  update() {
+  }
+
+  draw(alpha) {
+    Canvas.cls(Color.black)
+    var theta = 35.5
+
+    var width = 60
+    var height = 17
+    var spacing = 32
+
+    var centerX = Canvas.width / 2
+    var centerY = Canvas.height / 4
+    var center = Vec.new(centerX, centerY)
+
+    var playerY = Canvas.height - 2 - height - 9
+
+    var lineY = playerY + height / 2 - 1
+    Canvas.line(0, lineY, Canvas.width, lineY, Color.purple)
+    Canvas.line(centerX, centerY, centerX, Canvas.height, Color.white)
+    Canvas.circlefill(center.x, center.y, 12, Color.white)
+    var centerLeft = Vec.new(centerX - 4, centerY)
+    var centerRight = Vec.new(centerX + 4, centerY)
+    var centerTarget = Vec.new(centerX, lineY)
+    var leftTarget = Vec.new(centerX - (width + spacing), lineY)
+    var rightTarget = Vec.new(centerX + (width + spacing), lineY)
+    centerLeft = center
+    centerRight = center
+    // Draw to edge of screen in same direction
+    var result = leftTarget + (leftTarget - centerLeft)
+    Canvas.line(centerLeft.x, centerLeft.y, result.x, result.y, Color.white)
+    result = rightTarget + (rightTarget - centerRight)
+    Canvas.line(centerRight.x, centerRight.y, result.x, result.y, Color.white)
+    var x = 0
+
+    var bg = Color.rgb(Color.red.r, Color.red.g, Color.red.b, 128)
+    var pX = centerX + x * (width + spacing) - (width / 2)
+    Canvas.ellipsefill(pX, playerY, pX + width, playerY + height, bg)
+    Canvas.ellipse(pX, playerY, pX + width, playerY + height, Color.red)
+  }
+
+
+  printCenter(text, y, color) {
+    Canvas.print(text, Canvas.width / 2 - 4 * (text.count), y, color)
+  }
 }
