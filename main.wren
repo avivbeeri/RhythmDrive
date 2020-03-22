@@ -1,6 +1,6 @@
 var DEBUG = false
 
-import "graphics" for Canvas, Color
+import "graphics" for Canvas, Color, Font
 import "random" for Random
 import "dome" for Window, Process
 import "math" for M, Vec
@@ -713,6 +713,7 @@ class Game {
     Window.resize(scale * Canvas.width, scale * Canvas.height)
     // __scene = RhythmGame.begin(this, [])
     AudioEngine.load("music", "race-to-mars.ogg")
+    Font.load("title", "ark.ttf", 28).antialias = true
     push(TitleScene)
   }
 
@@ -815,28 +816,33 @@ class TitleScene {
   construct begin(controller, args) {
     _controller = controller
     _position = 0
+    var centerX = Canvas.width / 2
+    var centerY = Canvas.height / 4
+    var center = Vec.new(centerX, centerY)
+    _decorations = (1...40).map {|n|
+      var theta = (-90 + R.int(280) - 140) * D_PI
+      return SpaceLine.new(center, Vec.new(M.cos(theta), M.sin(theta)))
+    }.toList
   }
   update() {
     if (SPACE_KEY.update()) {
       _controller.push(RhythmGame)
     }
+    _decorations.each {|decor| decor.update() }
   }
 
   draw(alpha) {
     Canvas.cls(Color.black)
     var theta = 35.5
-
     var width = 60
     var height = 17
     var spacing = 32
-
     var centerX = Canvas.width / 2
     var centerY = Canvas.height / 4
     var center = Vec.new(centerX, centerY)
-
     var playerY = Canvas.height - 2 - height - 9
-
     var lineY = playerY + height / 2 - 1
+    _decorations.each {|decor| decor.draw(alpha) }
     Canvas.line(0, lineY, Canvas.width, lineY, Color.purple)
     Canvas.line(centerX, centerY, centerX, Canvas.height, Color.white)
     Canvas.circlefill(center.x, center.y, 12, Color.white)
@@ -858,8 +864,11 @@ class TitleScene {
     var pX = centerX + x * (width + spacing) - (width / 2)
     Canvas.ellipsefill(pX, playerY, pX + width, playerY + height, bg)
     Canvas.ellipse(pX, playerY, pX + width, playerY + height, Color.red)
+    var shade = Color.rgb(0, 0, 0, 128)
+    Canvas.rectfill(0, 0, Canvas.width, Canvas.height, shade)
+    Canvas.print("RhythmDrive", 46, Canvas.height / 2 - 10, Color.white, "title")
+    printCenter("Press SPACE to begin!", Canvas.height / 2 + 20, Color.white)
   }
-
 
   printCenter(text, y, color) {
     Canvas.print(text, Canvas.width / 2 - 4 * (text.count), y, color)
